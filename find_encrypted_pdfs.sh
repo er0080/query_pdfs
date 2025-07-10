@@ -72,7 +72,7 @@ find_encrypted_pdfs() {
                 echo "ERROR: Could not read $pdf_file" >&2
                 ;;
         esac
-    done < <(find "$target_dir" -type f -iname "*.pdf" -print0)
+    done < <(find "$target_dir" -type f \( -name "*.pdf" -o -name "*.PDF" \) -print0)
     
     echo ""
     echo "Summary:"

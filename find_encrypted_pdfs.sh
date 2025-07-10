@@ -5,12 +5,19 @@
 
 set -euo pipefail
 
+# Global verbose flag
+VERBOSE=false
+
 # Function to display usage
 usage() {
-    echo "Usage: $0 <directory>"
+    echo "Usage: $0 [-v] <directory>"
     echo "Find all encrypted PDF files in the specified directory (recursively)"
     echo ""
+    echo "Options:"
+    echo "  -v    Verbose mode (show all PDFs found, not just encrypted ones)"
+    echo ""
     echo "Example: $0 /path/to/pdf/directory"
+    echo "Example: $0 -v /path/to/pdf/directory"
     exit 1
 }
 
@@ -54,18 +61,40 @@ find_encrypted_pdfs() {
     echo "Looking for encrypted PDF files..."
     echo ""
     
+    if [ "$VERBOSE" = true ]; then
+        echo "DEBUG: Running find command: find \"$target_dir\" -type f \\( -name \"*.pdf\" -o -name \"*.PDF\" \\) -print0"
+        echo ""
+    fi
+    
     # Find all PDF files recursively and process them
+    # Temporarily disable set -e to handle function return codes properly
+    set +e
     while IFS= read -r -d '' pdf_file; do
         ((total_count++))
         
-        case $(is_pdf_encrypted "$pdf_file"; echo $?) in
+        if [ "$VERBOSE" = true ]; then
+            echo "DEBUG: Found PDF file: $pdf_file"
+        fi
+        
+        # Call function and capture exit code separately to avoid set -e issues
+        is_pdf_encrypted "$pdf_file"
+        local exit_code=$?
+        
+        if [ "$VERBOSE" = true ]; then
+            echo "DEBUG: is_pdf_encrypted returned: $exit_code"
+        fi
+        
+        case $exit_code in
             0)
                 # PDF is encrypted
                 echo "ENCRYPTED: $pdf_file"
                 ((encrypted_count++))
                 ;;
             1)
-                # PDF is not encrypted (silent)
+                # PDF is not encrypted
+                if [ "$VERBOSE" = true ]; then
+                    echo "NOT ENCRYPTED: $pdf_file"
+                fi
                 ;;
             2)
                 # Error reading PDF
@@ -73,6 +102,8 @@ find_encrypted_pdfs() {
                 ;;
         esac
     done < <(find "$target_dir" -type f \( -name "*.pdf" -o -name "*.PDF" \) -print0)
+    # Re-enable set -e
+    set -e
     
     echo ""
     echo "Summary:"
@@ -82,17 +113,46 @@ find_encrypted_pdfs() {
 
 # Main script execution
 main() {
-    # Check command line arguments
-    if [ $# -ne 1 ]; then
+    local target_directory=""
+    
+    # Parse command line arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -v|--verbose)
+                VERBOSE=true
+                shift
+                ;;
+            -*)
+                echo "Unknown option $1" >&2
+                usage
+                ;;
+            *)
+                if [ -n "$target_directory" ]; then
+                    echo "Error: Multiple directories specified" >&2
+                    usage
+                fi
+                target_directory="$1"
+                shift
+                ;;
+        esac
+    done
+    
+    # Check if directory was provided
+    if [ -z "$target_directory" ]; then
+        echo "Error: No directory specified" >&2
         usage
     fi
-    
-    local target_directory="$1"
     
     # Validate target directory
     if [ ! -d "$target_directory" ]; then
         echo "Error: Directory '$target_directory' does not exist." >&2
         exit 1
+    fi
+    
+    if [ "$VERBOSE" = true ]; then
+        echo "DEBUG: Verbose mode enabled"
+        echo "DEBUG: Target directory: $target_directory"
+        echo ""
     fi
     
     # Check dependencies
